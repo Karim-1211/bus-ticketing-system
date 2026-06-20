@@ -11,7 +11,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://silly-torte-0369fc.netlify.app",
+        "https://ict-bd-bus-services.netlify.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
