@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard — Grand Hotel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="shared.css"/>
+<style>
+  .recent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media(max-width:900px){ .recent-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="sidebar"></div>
+<div class="main">
+  <div class="topbar">
+    <h1>Dashboard</h1>
+    <span class="date" id="dateStr"></span>
+  </div>
+  <div class="content">
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="stat-icon gold">🛏️</div><div class="stat-info"><div class="value" id="totalRooms">—</div><div class="label">Total Rooms</div></div></div>
+      <div class="stat-card"><div class="stat-icon blue">👥</div><div class="stat-info"><div class="value" id="totalGuests">—</div><div class="label">Guests</div></div></div>
+      <div class="stat-card"><div class="stat-icon green">📅</div><div class="stat-info"><div class="value" id="totalBookings">—</div><div class="label">Bookings</div></div></div>
+      <div class="stat-card"><div class="stat-icon purple">💳</div><div class="stat-info"><div class="value" id="totalRevenue">—</div><div class="label">Revenue (CHF)</div></div></div>
+    </div>
+
+    <div class="recent-grid">
+      <div class="card">
+        <div class="page-header"><h2>Recent Bookings</h2><a href="bookings.html" class="btn btn-secondary btn-sm">View all</a></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Guest</th><th>Room</th><th>Check-in</th><th>Check-out</th></tr></thead>
+            <tbody id="recentBookings"><tr><td colspan="5" class="empty"><p>Loading…</p></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="page-header"><h2>Recent Payments</h2><a href="payments.html" class="btn btn-secondary btn-sm">View all</a></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Booking</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead>
+            <tbody id="recentPayments"><tr><td colspan="5" class="empty"><p>Loading…</p></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  document.getElementById('sidebar').innerHTML = renderSidebar('Dashboard');
+  document.getElementById('dateStr').textContent = new Date().toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  async function loadDashboard() {
+    const token = getToken(); if (!token) return;
+    const h = authHeaders();
+
+    try {
+      const [rooms, guests, bookings, payments] = await Promise.all([
+        apiFetch('/rooms/?limit=100', { headers: h }).then(r => r.json()),
+        apiFetch('/guests/?limit=100', { headers: h }).then(r => r.json()),
+        apiFetch('/bookings/?limit=100', { headers: h }).then(r => r.json()),
+        apiFetch('/payments/?limit=100', { headers: h }).then(r => r.json()),
+      ]);
+
+      document.getElementById('totalRooms').textContent = rooms.length;
+      document.getElementById('totalGuests').textContent = guests.length;
+      document.getElementById('totalBookings').textContent = bookings.length;
+
+      const revenue = payments.reduce((s, p) => s + p.amount, 0);
+      document.getElementById('totalRevenue').textContent = revenue.toLocaleString('en-CH', { minimumFractionDigits: 0 });
+
+      // Build guest & room lookup
+      const guestMap = {};
+      guests.forEach(g => guestMap[g.id] = g.name);
+      const roomMap = {};
+      rooms.forEach(r => roomMap[r.id] = r.room_number);
+
+      // Recent bookings
+      const recent = [...bookings].slice(-5).reverse();
+      document.getElementById('recentBookings').innerHTML = recent.length ? recent.map(b => `
+        <tr>
+          <td>#${b.id}</td>
+          <td>${guestMap[b.guest_id] || b.guest_id}</td>
+          <td>Room ${roomMap[b.room_id] || b.room_id}</td>
+          <td>${formatDate(b.check_in)}</td>
+          <td>${formatDate(b.check_out)}</td>
+        </tr>
+      `).join('') : '<tr><td colspan="5" class="empty"><p>No bookings yet</p></td></tr>';
+
+      // Recent payments
+      const recentPay = [...payments].slice(-5).reverse();
+      document.getElementById('recentPayments').innerHTML = recentPay.length ? recentPay.map(p => `
+        <tr>
+          <td>#${p.id}</td>
+          <td>#${p.booking_id}</td>
+          <td>CHF ${p.amount}</td>
+          <td>${p.method}</td>
+          <td><span class="badge badge-green">${p.status}</span></td>
+        </tr>
+      `).join('') : '<tr><td colspan="5" class="empty"><p>No payments yet</p></td></tr>';
+
+    } catch(e) {
+      showToast('Failed to load dashboard data', 'error');
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

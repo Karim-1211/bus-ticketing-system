@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Guests — Grand Hotel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar"></div>
+<div class="main">
+  <div class="topbar">
+    <h1>Guests</h1>
+    <span class="date" id="dateStr"></span>
+  </div>
+  <div class="content">
+    <div class="page-header">
+      <h2>All Guests</h2>
+      <button class="btn btn-primary" onclick="openModal()">＋ Add Guest</button>
+    </div>
+
+    <div class="filters">
+      <input type="text" id="search" placeholder="Search by name or phone…" oninput="filterGuests()"/>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Actions</th></tr></thead>
+          <tbody id="guestsBody"><tr><td colspan="4"><div class="empty"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">Add Guest</h3>
+    <input type="hidden" id="editId"/>
+    <div class="field"><label>Full Name</label><input type="text" id="fName" placeholder="e.g. John Smith"/></div>
+    <div class="field"><label>Phone Number</label><input type="text" id="fPhone" placeholder="e.g. +41 79 123 45 67"/></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGuest()">Save Guest</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  document.getElementById('sidebar').innerHTML = renderSidebar('Guests');
+  document.getElementById('dateStr').textContent = new Date().toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  let allGuests = [];
+
+  async function loadGuests() {
+    const res = await apiFetch('/guests/?limit=200', { headers: authHeaders() });
+    allGuests = await res.json();
+    renderGuests(allGuests);
+  }
+
+  function filterGuests() {
+    const q = document.getElementById('search').value.toLowerCase();
+    renderGuests(allGuests.filter(g => g.name.toLowerCase().includes(q) || g.phone.includes(q)));
+  }
+
+  function renderGuests(guests) {
+    const tbody = document.getElementById('guestsBody');
+    if (!guests.length) {
+      tbody.innerHTML = '<tr><td colspan="4"><div class="empty"><div class="icon">👥</div><p>No guests found.</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = guests.map(g => `
+      <tr>
+        <td><span class="badge badge-gold">#${g.id}</span></td>
+        <td><strong>${g.name}</strong></td>
+        <td>${g.phone}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="editGuest(${g.id}, '${g.name.replace(/'/g,"\\'")}', '${g.phone}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteGuest(${g.id})">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function openModal() {
+    document.getElementById('modalTitle').textContent = 'Add Guest';
+    document.getElementById('editId').value = '';
+    document.getElementById('fName').value = '';
+    document.getElementById('fPhone').value = '';
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function editGuest(id, name, phone) {
+    document.getElementById('modalTitle').textContent = 'Edit Guest';
+    document.getElementById('editId').value = id;
+    document.getElementById('fName').value = name;
+    document.getElementById('fPhone').value = phone;
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+  async function saveGuest() {
+    const id = document.getElementById('editId').value;
+    const body = { name: document.getElementById('fName').value, phone: document.getElementById('fPhone').value };
+    if (!body.name || !body.phone) { showToast('Please fill all fields', 'error'); return; }
+
+    const url = id ? `/guests/${id}` : '/guests/';
+    const method = id ? 'PUT' : 'POST';
+    const res = await apiFetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+
+    if (res.ok) { showToast(id ? 'Guest updated!' : 'Guest added!'); closeModal(); loadGuests(); }
+    else { const e = await res.json(); showToast(e.detail || 'Failed', 'error'); }
+  }
+
+  async function deleteGuest(id) {
+    if (!confirm('Delete this guest?')) return;
+    const res = await apiFetch(`/guests/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (res.ok) { showToast('Guest deleted'); loadGuests(); }
+    else showToast('Failed to delete', 'error');
+  }
+
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+  });
+
+  loadGuests();
+</script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Payments — Grand Hotel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar"></div>
+<div class="main">
+  <div class="topbar">
+    <h1>Payments</h1>
+    <span class="date" id="dateStr"></span>
+  </div>
+  <div class="content">
+
+    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="value" id="totalRev">—</div><div class="label">Total Revenue (CHF)</div></div></div>
+      <div class="stat-card"><div class="stat-icon gold">🧾</div><div class="stat-info"><div class="value" id="totalCount">—</div><div class="label">Payments Made</div></div></div>
+      <div class="stat-card"><div class="stat-icon blue">📊</div><div class="stat-info"><div class="value" id="avgAmt">—</div><div class="label">Average Amount (CHF)</div></div></div>
+    </div>
+
+    <div class="page-header">
+      <h2>All Payments</h2>
+      <button class="btn btn-primary" onclick="openModal()">＋ Record Payment</button>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Booking</th><th>Amount</th><th>Method</th><th>Status</th><th>Paid At</th><th>Actions</th></tr></thead>
+          <tbody id="paymentsBody"><tr><td colspan="7"><div class="empty"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Record Payment</h3>
+    <div class="field"><label>Booking</label>
+      <select id="fBooking"><option value="">Select booking…</option></select>
+    </div>
+    <div class="field"><label>Amount (CHF)</label><input type="number" id="fAmount" placeholder="e.g. 300"/></div>
+    <div class="field"><label>Payment Method</label>
+      <select id="fMethod">
+        <option value="cash">Cash</option>
+        <option value="card">Card</option>
+        <option value="visa">Visa</option>
+        <option value="mastercard">Mastercard</option>
+        <option value="online">Online Transfer</option>
+        <option value="twint">Twint</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePayment()">Record Payment</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  document.getElementById('sidebar').innerHTML = renderSidebar('Payments');
+  document.getElementById('dateStr').textContent = new Date().toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  let guestMap = {}, roomMap = {};
+
+  async function loadAll() {
+    const h = authHeaders();
+    const [guests, rooms, bookings, payments] = await Promise.all([
+      apiFetch('/guests/?limit=200', { headers: h }).then(r => r.json()),
+      apiFetch('/rooms/?limit=200', { headers: h }).then(r => r.json()),
+      apiFetch('/bookings/?limit=200', { headers: h }).then(r => r.json()),
+      apiFetch('/payments/?limit=200', { headers: h }).then(r => r.json()),
+    ]);
+
+    guests.forEach(g => guestMap[g.id] = g.name);
+    rooms.forEach(r => roomMap[r.id] = r.room_number);
+
+    // Populate booking select
+    const paidBookingIds = new Set(payments.map(p => p.booking_id));
+    document.getElementById('fBooking').innerHTML = '<option value="">Select booking…</option>' +
+      bookings.filter(b => !paidBookingIds.has(b.id)).map(b =>
+        `<option value="${b.id}">#${b.id} — ${guestMap[b.guest_id] || 'Guest'} — Room ${roomMap[b.room_id] || b.room_id} (${formatDate(b.check_in)} → ${formatDate(b.check_out)})</option>`
+      ).join('');
+
+    // Stats
+    const total = payments.reduce((s, p) => s + p.amount, 0);
+    document.getElementById('totalRev').textContent = total.toLocaleString('en-CH');
+    document.getElementById('totalCount').textContent = payments.length;
+    document.getElementById('avgAmt').textContent = payments.length ? Math.round(total / payments.length) : 0;
+
+    renderPayments(payments);
+  }
+
+  function renderPayments(payments) {
+    const tbody = document.getElementById('paymentsBody');
+    if (!payments.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="icon">💳</div><p>No payments recorded yet.</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = [...payments].reverse().map(p => `
+      <tr>
+        <td><span class="badge badge-gold">#${p.id}</span></td>
+        <td>Booking #${p.booking_id}</td>
+        <td><strong>CHF ${p.amount}</strong></td>
+        <td style="text-transform:capitalize">${p.method}</td>
+        <td><span class="badge badge-green">${p.status}</span></td>
+        <td>${new Date(p.paid_at).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">Delete</button></td>
+      </tr>
+    `).join('');
+  }
+
+  function openModal() { document.getElementById('modalOverlay').classList.add('open'); }
+  function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+  async function savePayment() {
+    const bookingId = document.getElementById('fBooking').value;
+    const amount    = document.getElementById('fAmount').value;
+    const method    = document.getElementById('fMethod').value;
+
+    if (!bookingId || !amount) { showToast('Please fill all fields', 'error'); return; }
+
+    const body = { booking_id: parseInt(bookingId), amount: parseFloat(amount), method };
+    const res = await apiFetch('/payments/', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+
+    if (res.ok) { showToast('Payment recorded!'); closeModal(); loadAll(); }
+    else { const e = await res.json(); showToast(e.detail || 'Failed', 'error'); }
+  }
+
+  async function deletePayment(id) {
+    if (!confirm('Delete this payment record?')) return;
+    const res = await apiFetch(`/payments/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (res.ok) { showToast('Payment deleted'); loadAll(); }
+    else showToast('Failed', 'error');
+  }
+
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+  });
+
+  loadAll();
+</script>
+</body>
+</html>

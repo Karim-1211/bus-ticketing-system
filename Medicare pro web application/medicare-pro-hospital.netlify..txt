@@ -1,0 +1,8 @@
+https://medicare-pro-hospital.netlify.app/
+
+What would you like to do next?
+
+A → Fix the login so only admins can access the dashboard (protect all pages behind authentication)
+B → First fix the Appointments page build error so the status dropdown works, then tackle login
+C → Add a separate patient-facing booking page
+

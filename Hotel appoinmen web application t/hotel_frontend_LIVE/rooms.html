@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Rooms — Grand Hotel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar"></div>
+<div class="main">
+  <div class="topbar">
+    <h1>Rooms</h1>
+    <span class="date" id="dateStr"></span>
+  </div>
+  <div class="content">
+    <div class="page-header">
+      <h2>All Rooms</h2>
+      <button class="btn btn-primary" onclick="openModal()">＋ Add Room</button>
+    </div>
+
+    <div class="filters">
+      <select id="filterAvail" onchange="loadRooms()">
+        <option value="">All availability</option>
+        <option value="true">Available</option>
+        <option value="false">Occupied</option>
+      </select>
+      <select id="filterType" onchange="loadRooms()">
+        <option value="">All types</option>
+        <option value="single">Single</option>
+        <option value="double">Double</option>
+        <option value="deluxe">Deluxe</option>
+        <option value="suite">Suite</option>
+        <option value="duplex">Duplex</option>
+      </select>
+      <input type="number" id="filterMax" placeholder="Max price (CHF)" onkeyup="loadRooms()"/>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Image</th><th>Room No.</th><th>Type</th><th>Price/night</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="roomsBody"><tr><td colspan="6"><div class="empty"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">Add Room</h3>
+    <input type="hidden" id="editId"/>
+    <div class="field"><label>Room Number</label><input type="number" id="fRoomNo" placeholder="e.g. 101"/></div>
+    <div class="field"><label>Room Type</label>
+      <select id="fType">
+        <option value="single">Single</option>
+        <option value="double">Double</option>
+        <option value="deluxe">Deluxe</option>
+        <option value="suite">Suite</option>
+        <option value="duplex">Duplex</option>
+      </select>
+    </div>
+    <div class="field"><label>Price per Night (CHF)</label><input type="number" id="fPrice" placeholder="e.g. 150"/></div>
+    <div class="field"><label>Availability</label>
+      <select id="fAvail"><option value="true">Available</option><option value="false">Occupied</option></select>
+    </div>
+    <div class="field"><label>Room Image (optional)</label><input type="file" id="fImage" accept="image/*"/></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRoom()">Save Room</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  document.getElementById('sidebar').innerHTML = renderSidebar('Rooms');
+  document.getElementById('dateStr').textContent = new Date().toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  const API_BASE = API; // from shared.js
+
+  async function loadRooms() {
+    const h = authHeaders();
+    let url = '/rooms/?limit=100';
+    const avail = document.getElementById('filterAvail').value;
+    const type  = document.getElementById('filterType').value;
+    const max   = document.getElementById('filterMax').value;
+    if (avail) url += `&available=${avail}`;
+    if (type)  url += `&room_type=${type}`;
+    if (max)   url += `&max_price=${max}`;
+
+    const res = await apiFetch(url, { headers: h });
+    const rooms = await res.json();
+    const tbody = document.getElementById('roomsBody');
+
+    if (!rooms.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="icon">🛏️</div><p>No rooms found. Add your first room.</p></div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rooms.map(r => `
+      <tr>
+        <td>${r.image
+          ? `<img src="${API_BASE}/uploads/${r.image}" class="room-img" onerror="this.style.display='none'"/>`
+          : `<div class="room-img-placeholder">🛏️</div>`}
+        </td>
+        <td><strong>${r.room_number}</strong></td>
+        <td style="text-transform:capitalize">${r.room_type}</td>
+        <td>CHF ${r.price}</td>
+        <td><span class="badge ${r.is_available ? 'badge-green' : 'badge-red'}">${r.is_available ? 'Available' : 'Occupied'}</span></td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="editRoom(${r.id}, '${r.room_type}', ${r.price}, ${r.is_available}, ${r.room_number})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteRoom(${r.id})">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function openModal() {
+    document.getElementById('modalTitle').textContent = 'Add Room';
+    document.getElementById('editId').value = '';
+    document.getElementById('fRoomNo').value = '';
+    document.getElementById('fPrice').value = '';
+    document.getElementById('fType').value = 'deluxe';
+    document.getElementById('fAvail').value = 'true';
+    document.getElementById('fImage').value = '';
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function editRoom(id, type, price, avail, roomNo) {
+    document.getElementById('modalTitle').textContent = 'Edit Room';
+    document.getElementById('editId').value = id;
+    document.getElementById('fRoomNo').value = roomNo;
+    document.getElementById('fType').value = type;
+    document.getElementById('fPrice').value = price;
+    document.getElementById('fAvail').value = avail ? 'true' : 'false';
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('open');
+  }
+
+  async function saveRoom() {
+    const id = document.getElementById('editId').value;
+    const form = new FormData();
+    if (!id) form.append('room_number', document.getElementById('fRoomNo').value);
+    form.append('room_type', document.getElementById('fType').value);
+    form.append('price', document.getElementById('fPrice').value);
+    form.append('is_available', document.getElementById('fAvail').value);
+    const img = document.getElementById('fImage').files[0];
+    if (img) form.append('image', img);
+
+    const token = getToken();
+    const url = id ? `/rooms/${id}` : '/rooms/';
+    const method = id ? 'PUT' : 'POST';
+
+    const res = await fetch(`${API_BASE}${url}`, {
+      method,
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form
+    });
+
+    if (res.ok) {
+      showToast(id ? 'Room updated!' : 'Room added!');
+      closeModal();
+      loadRooms();
+    } else {
+      const e = await res.json();
+      showToast(e.detail || 'Failed to save room', 'error');
+    }
+  }
+
+  async function deleteRoom(id) {
+    if (!confirm('Delete this room?')) return;
+    const res = await apiFetch(`/rooms/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (res.ok) { showToast('Room deleted'); loadRooms(); }
+    else showToast('Failed to delete', 'error');
+  }
+
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+  });
+
+  loadRooms();
+</script>
+</body>
+</html>

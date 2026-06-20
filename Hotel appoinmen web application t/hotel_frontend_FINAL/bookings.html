@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Bookings — Grand Hotel</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="shared.css"/>
+</head>
+<body>
+<div id="sidebar"></div>
+<div class="main">
+  <div class="topbar">
+    <h1>Bookings</h1>
+    <span class="date" id="dateStr"></span>
+  </div>
+  <div class="content">
+    <div class="page-header">
+      <h2>All Bookings</h2>
+      <button class="btn btn-primary" onclick="openModal()">＋ New Booking</button>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Guest</th><th>Room</th><th>Check-in</th><th>Check-out</th><th>Nights</th><th>Actions</th></tr></thead>
+          <tbody id="bookingsBody"><tr><td colspan="7"><div class="empty"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">New Booking</h3>
+    <input type="hidden" id="editId"/>
+    <div class="field"><label>Guest</label>
+      <select id="fGuest"><option value="">Select guest…</option></select>
+    </div>
+    <div class="field"><label>Room</label>
+      <select id="fRoom"><option value="">Select room…</option></select>
+    </div>
+    <div class="field"><label>Check-in Date</label><input type="date" id="fCheckIn"/></div>
+    <div class="field"><label>Check-out Date</label><input type="date" id="fCheckOut"/></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBooking()">Save Booking</button>
+    </div>
+  </div>
+</div>
+
+<script src="shared.js"></script>
+<script>
+  document.getElementById('sidebar').innerHTML = renderSidebar('Bookings');
+  document.getElementById('dateStr').textContent = new Date().toLocaleDateString('en-GB', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  let guestMap = {}, roomMap = {}, roomPriceMap = {};
+
+  async function loadAll() {
+    const h = authHeaders();
+    const [guests, rooms, bookings] = await Promise.all([
+      apiFetch('/guests/?limit=200', { headers: h }).then(r => r.json()),
+      apiFetch('/rooms/?limit=200', { headers: h }).then(r => r.json()),
+      apiFetch('/bookings/?limit=200', { headers: h }).then(r => r.json()),
+    ]);
+
+    guests.forEach(g => guestMap[g.id] = g.name);
+    rooms.forEach(r => { roomMap[r.id] = r.room_number; roomPriceMap[r.id] = r.price; });
+
+    // Populate selects
+    document.getElementById('fGuest').innerHTML = '<option value="">Select guest…</option>' +
+      guests.map(g => `<option value="${g.id}">${g.name} (${g.phone})</option>`).join('');
+
+    document.getElementById('fRoom').innerHTML = '<option value="">Select room…</option>' +
+      rooms.filter(r => r.is_available).map(r => `<option value="${r.id}">Room ${r.room_number} — ${r.room_type} — CHF ${r.price}/night</option>`).join('');
+
+    renderBookings(bookings);
+  }
+
+  function nights(ci, co) {
+    const d = (new Date(co) - new Date(ci)) / 86400000;
+    return d > 0 ? d : '—';
+  }
+
+  function renderBookings(bookings) {
+    const tbody = document.getElementById('bookingsBody');
+    if (!bookings.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="icon">📅</div><p>No bookings yet.</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = [...bookings].reverse().map(b => {
+      const n = nights(b.check_in, b.check_out);
+      return `
+        <tr>
+          <td><span class="badge badge-gold">#${b.id}</span></td>
+          <td>${guestMap[b.guest_id] || `Guest #${b.guest_id}`}</td>
+          <td>Room ${roomMap[b.room_id] || b.room_id}</td>
+          <td>${formatDate(b.check_in)}</td>
+          <td>${formatDate(b.check_out)}</td>
+          <td>${n} night${n !== 1 ? 's' : ''}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="editBooking(${b.id}, '${b.check_in}', '${b.check_out}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function openModal() {
+    document.getElementById('modalTitle').textContent = 'New Booking';
+    document.getElementById('editId').value = '';
+    document.getElementById('fGuest').disabled = false;
+    document.getElementById('fRoom').disabled = false;
+    document.getElementById('fGuest').value = '';
+    document.getElementById('fRoom').value = '';
+    document.getElementById('fCheckIn').value = todayISO();
+    document.getElementById('fCheckOut').value = '';
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function editBooking(id, ci, co) {
+    document.getElementById('modalTitle').textContent = 'Edit Booking';
+    document.getElementById('editId').value = id;
+    document.getElementById('fGuest').disabled = true;
+    document.getElementById('fRoom').disabled = true;
+    document.getElementById('fCheckIn').value = ci;
+    document.getElementById('fCheckOut').value = co;
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+  async function saveBooking() {
+    const id = document.getElementById('editId').value;
+    const checkIn  = document.getElementById('fCheckIn').value;
+    const checkOut = document.getElementById('fCheckOut').value;
+
+    if (!checkIn || !checkOut) { showToast('Please fill all dates', 'error'); return; }
+    if (new Date(checkOut) <= new Date(checkIn)) { showToast('Check-out must be after check-in', 'error'); return; }
+
+    let body, url, method;
+
+    if (id) {
+      body = { check_in: checkIn, check_out: checkOut };
+      url = `/bookings/${id}`; method = 'PUT';
+    } else {
+      const guestId = document.getElementById('fGuest').value;
+      const roomId  = document.getElementById('fRoom').value;
+      if (!guestId || !roomId) { showToast('Please select guest and room', 'error'); return; }
+      body = { guest_id: parseInt(guestId), room_id: parseInt(roomId), check_in: checkIn, check_out: checkOut };
+      url = '/bookings/'; method = 'POST';
+    }
+
+    const res = await apiFetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+    if (res.ok) { showToast(id ? 'Booking updated!' : 'Booking created!'); closeModal(); loadAll(); }
+    else { const e = await res.json(); showToast(e.detail || 'Failed', 'error'); }
+  }
+
+  async function deleteBooking(id) {
+    if (!confirm('Delete this booking?')) return;
+    const res = await apiFetch(`/bookings/${id}`, { method: 'DELETE', headers: authHeaders() });
+    if (res.ok) { showToast('Booking deleted'); loadAll(); }
+    else showToast('Failed to delete', 'error');
+  }
+
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+  });
+
+  loadAll();
+</script>
+</body>
+</html>

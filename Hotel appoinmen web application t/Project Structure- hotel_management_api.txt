@@ -1,0 +1,43 @@
+hotel_management_api/
+===
+│
+├── app/
+│   ├── main.py
+│   │
+│   ├── config/
+│   │   └── settings.py
+│   │
+│   ├── database/
+│   │   ├── connection.py
+│   │   └── base.py
+│   │
+│   ├── models/
+│   │   ├── guest.py
+│   │   ├── room.py
+│   │   ├── booking.py
+│   │   └── payment.py
+│   │
+│   ├── schemas/
+│   │   ├── guest.py
+│   │   ├── room.py
+│   │   ├── booking.py
+│   │   └── payment.py
+│   │
+│   ├── routes/
+│   │   ├── guest.py
+│   │   ├── room.py
+│   │   ├── booking.py
+│   │   └── payment.py
+│   │
+│   └── services/
+│       ├── guest_service.py
+│       ├── room_service.py
+│       ├── booking_service.py
+│       └── payment_service.py
+│
+├── migrations/
+│
+├── alembic.ini
+├── .env
+├── requirements.txt
+└── README.md
