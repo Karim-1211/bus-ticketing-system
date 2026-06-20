@@ -94,7 +94,7 @@ def book_ticket_walkin(schedule_id: int, seat_id: int, passenger_name: str, pass
     db.add(payment)
     db.commit()
 
-    return {"message": "Walk-in booking confirmed", "booking_id": booking.id, "ticket_number": ticket.ticket_number}
+    return {"message": "Walk-in booking confirmed", "booking_id": booking.id, "ticket_number": ticket.ticket_number, "seat_number": seat.seat_number}
 
 
 @router.get("/history")
@@ -107,10 +107,11 @@ def booking_history(db: Session = Depends(get_db), current_user=Depends(get_curr
     for b in bookings:
         ticket = db.query(Ticket).filter(Ticket.booking_id == b.id).first()
         payment = db.query(Payment).filter(Payment.booking_id == b.id).first()
+        seat = db.query(Seat).filter(Seat.id == b.seat_id).first()
         result.append({
             "id": b.id,
             "schedule_id": b.schedule_id,
-            "seat_id": b.seat_id,
+            "seat_number": seat.seat_number if seat else None,
             "status": b.status,
             "booked_at": b.booked_at,
             "ticket_number": ticket.ticket_number if ticket else None,
