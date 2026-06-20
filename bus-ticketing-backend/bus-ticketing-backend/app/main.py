@@ -3,13 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.base import Base
 from app.db.session import engine
 from app.models import user, bus, route, schedule, seat, booking, ticket, payment, employee, notification
-from app.api.routes import auth, buses, bus_routes, schedules, bookings, reports, notifications
+from app.api.routes import auth, buses, bus_routes, schedules, bookings, reports, notifications, employees
 
 app = FastAPI(title="Bus Ticketing Management System")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://silly-torte-0369fc.netlify.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,6 +27,7 @@ app.include_router(schedules.router)
 app.include_router(bookings.router)
 app.include_router(reports.router)
 app.include_router(notifications.router)
+app.include_router(employees.router)
 
 @app.get("/")
 def root():
